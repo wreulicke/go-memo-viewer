@@ -1,0 +1,46 @@
+
+version: '3'
+services: 
+  elasticsearch:
+    image: wreulicke/elasticsearch:6.0.0
+    ports:
+      - "${ES_REST_PORT:-9200}:9200"
+      - "9300:9300"
+    container_name: elasticsearch
+    hostname: elasticsearch
+    environment:
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+      http.host: "0.0.0.0"
+      transport.host: "127.0.0.1"
+      xpack.security.enabled: "false"
+      xpack.monitoring.enabled: "false"
+      xpack.watcher.enabled: "false"
+      xpack.graph.enabled: "false"
+    networks:
+      - elk
+  mysql:
+    image: mysql
+    working_dir: /opt
+    environment:
+      MYSQL_DATABASE: "go-memo-viewer"
+      MYSQL_ALLOW_EMPTY_PASSWORD: "true"
+    ports:
+      - "3306:3306"
+  kibana:
+    image: "docker.elastic.co/kibana/kibana:6.0.1"
+    environment:
+      SERVER_HOST: "0.0.0.0"
+      SERVER_NAME: "kibana"
+      ELASTICSEARCH_URL: "http://elasticsearch:9200"
+      XPACK_SECURITY_ENABLED: "false"
+      XPACK_MONITORING_ENABLED: "false"
+    ports:
+      - "5601:5601"
+    networks:
+      - elk
+    depends_on:
+      - elasticsearch
+
+networks:
+  elk:
+    driver: bridge
