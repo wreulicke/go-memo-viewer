@@ -3,9 +3,10 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
 )
 
 // Model for starwars
@@ -28,44 +29,48 @@ type Model struct {
 
 func main() {
 	client := &http.Client{}
+	router := gin.Default()
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	router.GET("/", func(c *gin.Context) {
 		resp, err := client.Get("http://localhost:9200/")
 		if err == nil {
 			defer resp.Body.Close()
 			bytes, err := ioutil.ReadAll(resp.Body)
 			if err == nil {
-				w.Write(bytes)
-				return
+				c.Data(http.StatusOK, "", bytes)
 			}
-			return
 		}
-		http.Error(w, resp.Status, resp.StatusCode)
+		c.Status(http.StatusInternalServerError)
+		c.Error(err)
 	})
-	http.HandleFunc("/write", func(w http.ResponseWriter, r *http.Request) {
+
+	router.POST("/write", func(c *gin.Context) {
 		data, err := json.Marshal(Model{})
 		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
+
 		req, err := http.NewRequest("POST", "http://localhost:9200/hoges/hoge/test", bytes.NewReader(data))
 		req.Header.Add("Content-Type", "application/json")
 		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
+
 		resp, err := client.Do(req)
 		if err == nil {
 			defer resp.Body.Close()
 			bytes, err := ioutil.ReadAll(resp.Body)
-			fmt.Println(resp.Status, string(bytes))
 			if err == nil {
-				w.Write(bytes)
+				c.Data(http.StatusOK, "application/json", bytes)
 				return
 			}
-			return
 		}
-		http.Error(w, resp.Status, resp.StatusCode)
+		c.Status(http.StatusInternalServerError)
+		c.Error(err)
+		c.Abort()
 	})
-	http.ListenAndServe(":8080", nil)
+
+	router.Run(":8080")
 }
