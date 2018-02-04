@@ -1,76 +1,60 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
-	"io/ioutil"
-	"net/http"
+	"database/sql"
+	"fmt"
 
+	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
+	gas "github.com/jessevdk/go-assets"
+	"github.com/mattes/migrate"
+	"github.com/wreulicke/go-memo-viewer/assets"
+	"github.com/wreulicke/go-memo-viewer/driver"
+	"github.com/wreulicke/go-memo-viewer/memo"
+	"github.com/wreulicke/go-memo-viewer/migration_assets"
+
+	_ "github.com/mattes/migrate/database/mysql"
 )
 
-// Model for starwars
-type Model struct {
-	SetID    int    `json:"set-id"`
-	Number   int    `json:"number"`
-	Variant  int    `json:"variant"`
-	Theme    string `json:"theme"`
-	Subtheme string `json:"sub-theme"`
-	Year     int    `json:"year"`
-	Name     string `json:"name"`
-	Minifigs int    `json:"minifigs"`
-	Pieces   int    `json:"prices"`
-	UKPrice  int    `json:"uk-price"`
-	USPrice  int    `json:"us-price"`
-	CAPrice  int    `json:"ca-price"`
-	EUPrice  int    `json:"eu-price"`
-	ImageURL string `json:"image-url"`
+type FS struct {
+	gas.FileSystem
 }
 
+func (*FS) Exists(prefix string, path string) bool {
+	return path == "/" || path == "/index.html"
+}
+
+//go:generate go-assets-builder -s="/public" -p assets -o assets/bindata.go public
+//go:generate go-assets-builder -s="/migrations" -p migration_assets -o migration_assets/bindata.go migrations
 func main() {
-	client := &http.Client{}
+	d, err := driver.WithInstance(migration_assets.Assets)
+
+	if err != nil {
+		fmt.Println("Migration file system broken.")
+		return
+	}
+
+	m, err := migrate.NewWithSourceInstance("go-assets", d, "mysql://root@tcp(127.0.0.1:3306)/test")
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	err = m.Migrate(d.Version)
+
+	if err != nil && err.Error() != "no change" {
+		fmt.Println("migration is failed: ", err)
+		return
+	}
+
 	router := gin.Default()
+	// store := sessions.NewCookieStore([]byte("secret"))
+	// router.Use(sessions.Sessions("go-memo-viewer", store))
 
-	router.GET("/", func(c *gin.Context) {
-		resp, err := client.Get("http://localhost:9200/")
-		if err == nil {
-			defer resp.Body.Close()
-			bytes, err := ioutil.ReadAll(resp.Body)
-			if err == nil {
-				c.Data(http.StatusOK, "", bytes)
-			}
-		}
-		c.Status(http.StatusInternalServerError)
-		c.Error(err)
-	})
-
-	router.POST("/write", func(c *gin.Context) {
-		data, err := json.Marshal(Model{})
-		if err != nil {
-			c.AbortWithStatus(http.StatusInternalServerError)
-			return
-		}
-
-		req, err := http.NewRequest("POST", "http://localhost:9200/hoges/hoge/test", bytes.NewReader(data))
-		req.Header.Add("Content-Type", "application/json")
-		if err != nil {
-			c.AbortWithStatus(http.StatusInternalServerError)
-			return
-		}
-
-		resp, err := client.Do(req)
-		if err == nil {
-			defer resp.Body.Close()
-			bytes, err := ioutil.ReadAll(resp.Body)
-			if err == nil {
-				c.Data(http.StatusOK, "application/json", bytes)
-				return
-			}
-		}
-		c.Status(http.StatusInternalServerError)
-		c.Error(err)
-		c.Abort()
-	})
+	router.NoRoute(static.Serve("/", &FS{FileSystem: *assets.Assets}))
+	conn, err := sql.Open("mysql", "root@tcp(localhost:3306)/test")
+	memo.Route(router.Group("/memo"), conn)
 
 	router.Run(":8080")
 }

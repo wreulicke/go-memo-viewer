@@ -7,6 +7,7 @@ BUILDTIME=\"main.buildtime=$(shell date '+%Y/%m/%d %H:%M:%S %Z')\"
 GOVERSION=\"main.goversion=$(shell go version)\"
 
 preinstall: 
+	go get github.com/jessevdk/go-assets-builder
 	go get github.com/mitchellh/gox
 	go get github.com/jstemmer/go-junit-report
 	go get github.com/haya14busa/goverage
@@ -31,6 +32,9 @@ build:
 
 test:
 	go test ./...
+
+start: build
+	go run main.go
 
 package: build
 	gox -os="$(OS)" -arch="$(ARCH)" -ldflags="-X $(VERSION) -X $(HASH) -X $(BUILDTIME) -X $(GOVERSION)" -output "dist/{{.OS}}_{{.Arch}}/{{.Dir}}"
